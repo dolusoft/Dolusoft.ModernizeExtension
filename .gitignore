@@ -1,0 +1,16 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# NuGet
+packages/
+*.nupkg
+
+# VSIX build artifacts
+*.vsix
+
+# Roslyn / VS generated
+*.g.cs

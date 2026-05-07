@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable"
+              xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <Extern href="stdidcmd.h"/>
+  <Extern href="vsshlids.h"/>
+
+  <Commands package="guidModernizePackage">
+
+    <Groups>
+      <!-- Adds a separator group to each context menu -->
+      <Group guid="guidModernizeCommandSet" id="ModernizeGroupFile" priority="0x0700">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
+      </Group>
+      <Group guid="guidModernizeCommandSet" id="ModernizeGroupProj" priority="0x0700">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
+      </Group>
+      <Group guid="guidModernizeCommandSet" id="ModernizeGroupSln" priority="0x0700">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_SOLNNODE"/>
+      </Group>
+    </Groups>
+
+    <Buttons>
+      <Button guid="guidModernizeCommandSet" id="cmdModernizeFile" priority="0x0100" type="Button">
+        <Parent guid="guidModernizeCommandSet" id="ModernizeGroupFile"/>
+        <Icon guid="guidModernizeImages" id="1"/>
+        <Strings>
+          <ButtonText>Modernize File</ButtonText>
+          <CommandName>ModernizeFile</CommandName>
+        </Strings>
+      </Button>
+
+      <Button guid="guidModernizeCommandSet" id="cmdModernizeProject" priority="0x0100" type="Button">
+        <Parent guid="guidModernizeCommandSet" id="ModernizeGroupProj"/>
+        <Icon guid="guidModernizeImages" id="1"/>
+        <Strings>
+          <ButtonText>Modernize Project</ButtonText>
+          <CommandName>ModernizeProject</CommandName>
+        </Strings>
+      </Button>
+
+      <Button guid="guidModernizeCommandSet" id="cmdModernizeSolution" priority="0x0100" type="Button">
+        <Parent guid="guidModernizeCommandSet" id="ModernizeGroupSln"/>
+        <Icon guid="guidModernizeImages" id="1"/>
+        <Strings>
+          <ButtonText>Modernize Solution</ButtonText>
+          <CommandName>ModernizeSolution</CommandName>
+        </Strings>
+      </Button>
+    </Buttons>
+
+    <Bitmaps>
+      <Bitmap guid="guidModernizeImages"
+              href="..\Resources\modernize-16.png"
+              usedList="1"/>
+    </Bitmaps>
+
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="guidModernizePackage"    value="{E826BF7B-245A-4D9F-BD21-E21D23F5D411}" />
+    <GuidSymbol name="guidModernizeCommandSet" value="{A13EF785-0610-4286-B993-A95AF1C28D2E}">
+      <IDSymbol name="ModernizeGroupFile"    value="0x1020" />
+      <IDSymbol name="ModernizeGroupProj"    value="0x1021" />
+      <IDSymbol name="ModernizeGroupSln"     value="0x1022" />
+      <IDSymbol name="cmdModernizeFile"      value="0x0100" />
+      <IDSymbol name="cmdModernizeProject"   value="0x0101" />
+      <IDSymbol name="cmdModernizeSolution"  value="0x0102" />
+    </GuidSymbol>
+    <GuidSymbol name="guidModernizeImages" value="{9FD41245-1C01-4022-9549-0995C5AF8C45}">
+      <IDSymbol name="bmpModernize" value="1"/>
+    </GuidSymbol>
+
+    <!-- guidSHLMainMenu context menu IDs — vsshlids.h'de eksik olabilir, burada tanımlıyoruz -->
+    <GuidSymbol name="guidSHLMainMenu" value="{D309F791-903F-11D0-9EFC-00A0C911004F}">
+      <IDSymbol name="IDM_VS_CTXT_ITEMNODE"  value="0x0430" />
+      <IDSymbol name="IDM_VS_CTXT_PROJNODE"  value="0x0402" />
+      <IDSymbol name="IDM_VS_CTXT_SOLNNODE"  value="0x0413" />
+    </GuidSymbol>
+  </Symbols>
+
+</CommandTable>
