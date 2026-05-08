@@ -1,14 +1,15 @@
+using Dolusoft.ModernizeExtension.Engine;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Dolusoft.ModernizeExtension.Engine;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 
 namespace Dolusoft.ModernizeExtension.Transformers;
 
@@ -31,17 +32,25 @@ internal sealed class GlobalUsingsTransformer : ICodeTransformer
             var project = solution.GetProject(group.Key);
             if (project == null) continue;
 
-            // Collect all top-level, plain using directives (no static, no alias)
-            var allUsings = new SortedSet<string>();
-            var docIds    = group.Select(d => d!.Id).ToList();
+            // Use ALL project documents for frequency counting, not just those in scope.
+            // This ensures accurate threshold calculation regardless of scope size.
+            var allDocIds = project.Documents.Select(d => d.Id).ToList();
 
-            foreach (var docId in docIds)
+            // Preserved: regular namespace global usings already in GlobalUsings.cs (idempotency).
+            // PreservedVerbatim: static/alias global usings kept verbatim to avoid losing keywords.
+            // Frequency: how many source files declare each using (no static, no alias).
+            // A using is worth globalizing only when it appears in max(3, ceil(N*0.5)) files,
+            // where N is the total non-GlobalUsings source file count in the project.
+            var preserved         = new SortedSet<string>();
+            var preservedVerbatim = new SortedSet<string>(StringComparer.Ordinal);
+            var frequency         = new Dictionary<string, int>(StringComparer.Ordinal);
+            int sourceFileCount   = 0;
+
+            foreach (var docId in allDocIds)
             {
                 var doc = solution.GetDocument(docId);
                 if (doc == null) continue;
 
-                // For an existing GlobalUsings.cs: preserve its entries so a second run
-                // doesn't overwrite the file with a smaller set and lose already-moved usings.
                 if (Path.GetFileName(doc.FilePath) == "GlobalUsings.cs")
                 {
                     var existingRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
@@ -49,7 +58,12 @@ internal sealed class GlobalUsingsTransformer : ICodeTransformer
                     {
                         foreach (var gu in existingRoot.DescendantNodes().OfType<UsingDirectiveSyntax>()
                             .Where(u => !u.GlobalKeyword.IsKind(SyntaxKind.None)))
-                            allUsings.Add(gu.Name!.ToString());
+                        {
+                            if (!gu.StaticKeyword.IsKind(SyntaxKind.None) || gu.Alias != null)
+                                preservedVerbatim.Add(gu.ToString().Trim());
+                            else
+                                preserved.Add(gu.Name!.ToString());
+                        }
                     }
                     continue;
                 }
@@ -57,7 +71,10 @@ internal sealed class GlobalUsingsTransformer : ICodeTransformer
                 var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (root == null) continue;
 
-                // Only collect top-level usings (not inside a namespace block)
+                var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+
+                sourceFileCount++;
+
                 var topLevelUsings = root.ChildNodes()
                     .OfType<UsingDirectiveSyntax>()
                     .Where(u => u.GlobalKeyword.IsKind(SyntaxKind.None)
@@ -65,22 +82,52 @@ internal sealed class GlobalUsingsTransformer : ICodeTransformer
                              && u.Alias == null);
 
                 foreach (var u in topLevelUsings)
-                    allUsings.Add(u.Name!.ToString());
+                {
+                    var name = u.Name!.ToString();
+
+                    // Skip if the name resolves to a type rather than a namespace (CS0138 guard).
+                    if (semanticModel != null)
+                    {
+                        var symbol = semanticModel.GetSymbolInfo(u.Name!).Symbol;
+                        if (symbol != null && symbol is not INamespaceSymbol)
+                            continue;
+                    }
+
+                    frequency.TryGetValue(name, out var count);
+                    frequency[name] = count + 1;
+                }
             }
 
-            if (allUsings.Count == 0) continue;
+            int threshold = Math.Max(3, (int)Math.Ceiling(sourceFileCount * 0.5));
 
-            // Build GlobalUsings.cs content
-            var sb = new StringBuilder();
-            foreach (var ns in allUsings)
-                sb.AppendLine($"global using {ns};");
+            // Usings that newly qualify based on frequency
+            var frequencyUsings = new SortedSet<string>(
+                frequency.Where(kvp => kvp.Value >= threshold).Select(kvp => kvp.Key));
 
-            var projectDir    = Path.GetDirectoryName(project.FilePath) ?? string.Empty;
+            var projectDir       = Path.GetDirectoryName(project.FilePath) ?? string.Empty;
             var globalUsingsPath = Path.Combine(projectDir, "GlobalUsings.cs");
 
-            // Add or replace GlobalUsings.cs in the solution
             var existingDoc = project.Documents
-                .FirstOrDefault(d => string.Equals(d.FilePath, globalUsingsPath, System.StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(d => string.Equals(d.FilePath, globalUsingsPath, StringComparison.OrdinalIgnoreCase));
+
+            // Issue 1: never create a new GlobalUsings.cs when nothing qualifies.
+            // An existing file is always updated (to add new entries or stay in sync).
+            if (existingDoc == null && frequencyUsings.Count == 0 && preservedVerbatim.Count == 0)
+                continue;
+
+            // Merge preserved + frequency entries
+            var allUsings = new SortedSet<string>(preserved);
+            allUsings.UnionWith(frequencyUsings);
+
+            if (allUsings.Count == 0 && preservedVerbatim.Count == 0) continue;
+
+            // Build GlobalUsings.cs content.
+            // Verbatim entries (static/alias) come first, then regular namespace usings.
+            var sb = new StringBuilder();
+            foreach (var line in preservedVerbatim)
+                sb.AppendLine(line);
+            foreach (var ns in allUsings)
+                sb.AppendLine($"global using {ns};");
 
             var content    = sb.ToString();
             var sourceText = SourceText.From(content, Encoding.UTF8);
@@ -93,7 +140,6 @@ internal sealed class GlobalUsingsTransformer : ICodeTransformer
             {
                 // Write directly to disk so VS's SDK-style project system (glob-based)
                 // detects the file via file watcher before the user's next build.
-                // TryApplyChanges alone may not notify the project system in time.
                 File.WriteAllText(globalUsingsPath, content, Encoding.UTF8);
                 solution = solution.AddDocument(
                     DocumentId.CreateNewId(project.Id, "GlobalUsings.cs"),
@@ -102,8 +148,8 @@ internal sealed class GlobalUsingsTransformer : ICodeTransformer
                     filePath: globalUsingsPath);
             }
 
-            // Remove collected usings from individual files
-            solution = await RemoveUsingsFromDocumentsAsync(solution, docIds, allUsings, ct);
+            // Remove collected usings from all project files
+            solution = await RemoveUsingsFromDocumentsAsync(solution, allDocIds, allUsings, ct);
         }
 
         return solution;

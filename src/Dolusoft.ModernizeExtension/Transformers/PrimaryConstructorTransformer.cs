@@ -112,6 +112,22 @@ internal sealed class PrimaryConstructorTransformer : ICodeTransformer
             var usedParams = assigns.Select(a => ((IdentifierNameSyntax)a.Right).Identifier.Text).ToHashSet();
             if (!paramNames.SetEquals(usedParams)) return false;
 
+            // Only transform when every assignment targets a field, not a property.
+            // Property assignments require a different approach (initializers) and
+            // renaming a property-name-derived key corrupts type names and other-instance accesses.
+            foreach (var assign in assigns)
+            {
+                var lhsNode = assign.Left switch
+                {
+                    MemberAccessExpressionSyntax mae when mae.Expression is ThisExpressionSyntax
+                        => (SyntaxNode?)mae.Name,
+                    IdentifierNameSyntax id => id,
+                    _ => null
+                };
+                if (lhsNode == null) return false;
+                if (_model.GetSymbolInfo(lhsNode).Symbol is not IFieldSymbol) return false;
+            }
+
             assignments = assigns;
             return true;
         }
@@ -145,7 +161,7 @@ internal sealed class PrimaryConstructorTransformer : ICodeTransformer
 
         public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
         {
-            // this._logger  →  logger
+            // this._field  →  parameter name (full node replacement)
             if (node.Expression is ThisExpressionSyntax &&
                 _map.TryGetValue(node.Name.Identifier.Text, out var paramName))
             {
@@ -153,7 +169,12 @@ internal sealed class PrimaryConstructorTransformer : ICodeTransformer
                     SyntaxFactory.Identifier(paramName).WithTriviaFrom(node.Name.Identifier))
                     .WithLeadingTrivia(node.GetLeadingTrivia());
             }
-            return base.VisitMemberAccessExpression(node);
+
+            // For all other member access expressions, only visit the receiver (Expression),
+            // never the Name — otherwise VisitIdentifierName would rename property/method names
+            // on other instances (e.g. other.FieldName → other.paramName).
+            var newExpr = (ExpressionSyntax?)Visit(node.Expression) ?? node.Expression;
+            return ReferenceEquals(newExpr, node.Expression) ? node : node.WithExpression(newExpr);
         }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)

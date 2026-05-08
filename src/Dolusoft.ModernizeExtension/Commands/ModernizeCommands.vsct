@@ -50,6 +50,7 @@
     </Buttons>
 
     <Bitmaps>
+      <!-- Fallback for environments where Image Service moniker is not resolved -->
       <Bitmap guid="guidModernizeImages"
               href="..\Resources\modernize-16.png"
               usedList="1"/>

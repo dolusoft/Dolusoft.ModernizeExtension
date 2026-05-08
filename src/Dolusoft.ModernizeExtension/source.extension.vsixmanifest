@@ -4,7 +4,7 @@
                 xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
     <Identity Id="Dolusoft.ModernizeExtension.E826BF7B-245A-4D9F-BD21-E21D23F5D411"
-              Version="1.0"
+              Version="1.1"
               Language="en-US"
               Publisher="Dolusoft" />
     <DisplayName>Dolusoft C# Modernizer</DisplayName>
@@ -13,6 +13,7 @@
       global usings consolidation, file-scoped namespaces, primary constructors,
       Directory.Build.props extraction, and simplified new expressions.
     </Description>
+    <Icon>Resources\modernize-32.png</Icon>
     <Tags>C#, Roslyn, modernization, refactoring</Tags>
   </Metadata>
   <Installation>

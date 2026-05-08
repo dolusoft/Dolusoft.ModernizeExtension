@@ -50,11 +50,23 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Resources\modernize-16.png">
+    <!-- Embedded WPF resources — served via pack URI from the Image Service -->
+    <Resource Include="Resources\modernize-16.png" />
+    <Resource Include="Resources\modernize-dark-16.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Loose files included in the VSIX package -->
+    <Content Include="Resources\modernize-32.png">
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\modernize-32.png">
+    <Content Include="Resources\modernize-dark-32.png">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Image manifest: registered at runtime via ProvideImageManifestAttribute -->
+    <Content Include="Resources\ModernizeImages.imagemanifest">
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

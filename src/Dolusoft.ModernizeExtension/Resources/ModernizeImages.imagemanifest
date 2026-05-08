@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImageManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+               xmlns="http://schemas.microsoft.com/VisualStudio/ImageManifestSchema/2014">
+  <Symbols>
+    <String Name="Resources" Value="pack://application:,,,/Dolusoft.ModernizeExtension;component/Resources/" />
+    <Guid   Name="ModernizeImagesGuid" Value="{9FD41245-1C01-4022-9549-0995C5AF8C45}" />
+    <ID     Name="Modernize"           Value="1" />
+  </Symbols>
+  <Images>
+    <Image Guid="$(ModernizeImagesGuid)" ID="$(Modernize)">
+      <!-- Default: light theme (dark-colored icon on light background) -->
+      <Source Uri="$(Resources)modernize-16.png">
+        <Size Value="16" />
+      </Source>
+      <!-- Dark + High Contrast themes: light-colored icon on dark background -->
+      <Source Uri="$(Resources)modernize-16.png">
+        <Size Value="16" />
+        <Theme Name="Dark"          Value="{1ded0138-47ce-435e-84ef-9ec1f439b749}" />
+        <Theme Name="HighContrast"  Value="{a5c004b4-2d4b-494e-bf01-45fc492522c7}" />
+      </Source>
+    </Image>
+  </Images>
+</ImageManifest>

@@ -5,9 +5,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using Dolusoft.ModernizeExtension.Engine;
 using Dolusoft.ModernizeExtension.Infrastructure;
+using Dolusoft.ModernizeExtension.Options;
 using EnvDTE;
 using Microsoft.CodeAnalysis;
+using RoslynSolution = Microsoft.CodeAnalysis.Solution;
 using Microsoft.VisualStudio.ComponentModelHost;
+using Microsoft.VisualStudio.Imaging.Interop;
 using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
@@ -22,6 +25,14 @@ internal sealed class ModernizeCommand
     private const int CmdModernizeSolution = 0x0102;
 
     public static readonly Guid CommandSet = new("A13EF785-0610-4286-B993-A95AF1C28D2E");
+
+    // Matches the GUID/ID in ModernizeImages.imagemanifest — VS Image Service serves
+    // the light or dark variant automatically based on the current VS theme.
+    private static readonly ImageMoniker ModernizeMoniker = new()
+    {
+        Guid = new Guid("{9FD41245-1C01-4022-9549-0995C5AF8C45}"),
+        Id   = 1
+    };
 
     private readonly AsyncPackage _package;
 
@@ -45,6 +56,7 @@ internal sealed class ModernizeCommand
     {
         var cmd = new OleMenuCommand(execute, new CommandID(CommandSet, id));
         cmd.BeforeQueryStatus += queryStatus;
+        cmd.Properties[typeof(ImageMoniker)] = ModernizeMoniker;
         cs.AddCommand(cmd);
     }
 
@@ -87,14 +99,15 @@ internal sealed class ModernizeCommand
         _package.JoinableTaskFactory.RunAsync(async () =>
         {
             var workspace = await GetWorkspaceAsync();
-            var scope = workspace.CurrentSolution.Projects
+            var solution  = workspace.CurrentSolution;
+            var scope     = solution.Projects
                 .SelectMany(p => p.Documents)
                 .Where(d => string.Equals(d.FilePath, path, StringComparison.OrdinalIgnoreCase))
                 .Select(d => d.Id)
                 .ToList();
 
             if (scope.Count == 0) return;
-            await RunEngineAsync(workspace, scope, ModernizationScope.File);
+            await RunEngineAsync(workspace, solution, scope, ModernizationScope.File);
         }).FileAndForget("Dolusoft.ModernizeExtension/File");
     }
 
@@ -107,13 +120,14 @@ internal sealed class ModernizeCommand
 
         _package.JoinableTaskFactory.RunAsync(async () =>
         {
-            var workspace = await GetWorkspaceAsync();
-            var roslynProject = workspace.CurrentSolution.Projects
+            var workspace      = await GetWorkspaceAsync();
+            var solution       = workspace.CurrentSolution;
+            var roslynProject  = solution.Projects
                 .FirstOrDefault(p => string.Equals(p.FilePath, projectFile, StringComparison.OrdinalIgnoreCase));
             if (roslynProject == null) return;
 
             var scope = roslynProject.Documents.Select(d => d.Id).ToList();
-            await RunEngineAsync(workspace, scope, ModernizationScope.Project);
+            await RunEngineAsync(workspace, solution, scope, ModernizationScope.Project);
         }).FileAndForget("Dolusoft.ModernizeExtension/Project");
     }
 
@@ -122,26 +136,37 @@ internal sealed class ModernizeCommand
         _package.JoinableTaskFactory.RunAsync(async () =>
         {
             var workspace = await GetWorkspaceAsync();
-            var scope = workspace.CurrentSolution.Projects
+            var solution  = workspace.CurrentSolution;
+            var scope     = solution.Projects
                 .SelectMany(p => p.Documents)
                 .Select(d => d.Id)
                 .ToList();
 
-            await RunEngineAsync(workspace, scope, ModernizationScope.Solution);
+            if (scope.Count == 0) return;
+            await RunEngineAsync(workspace, solution, scope, ModernizationScope.Solution);
         }).FileAndForget("Dolusoft.ModernizeExtension/Solution");
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    private async Task RunEngineAsync(VisualStudioWorkspace workspace, IReadOnlyList<DocumentId> scope, ModernizationScope modernizationScope)
+    private async Task RunEngineAsync(VisualStudioWorkspace workspace, RoslynSolution solution, IReadOnlyList<DocumentId> scope, ModernizationScope modernizationScope)
     {
-        // IVsStatusbar must be obtained on the main thread
+        // IVsStatusbar and GetDialogPage must be obtained on the main thread
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
         var statusBar = Package.GetGlobalService(typeof(SVsStatusbar)) as IVsStatusbar;
+        var options   = (ModernizeOptions)_package.GetDialogPage(typeof(ModernizeOptions));
 
         using var progress = new ProgressReporter(statusBar, _package.JoinableTaskFactory);
-        var engine = new ModernizationEngine(workspace, progress);
-        await engine.RunAsync(workspace.CurrentSolution, scope, modernizationScope, _package.DisposalToken);
+        var engine  = new ModernizationEngine(workspace, progress, options);
+        var result  = await engine.RunAsync(solution, scope, modernizationScope, _package.DisposalToken);
+
+        // TryApplyChanges must be called on the main thread — async awaits inside RunAsync
+        // may have yielded to a background thread, so we explicitly switch back.
+        if (result != solution)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            workspace.TryApplyChanges(result);
+        }
     }
 
     private string? GetSelectedFilePath()
